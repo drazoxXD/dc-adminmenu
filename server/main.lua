@@ -166,7 +166,7 @@ RegisterNetEvent('qb-admin:server:spectate', function(player)
     local src = source
     local targetped = GetPlayerPed(player.id)
     local coords = GetEntityCoords(targetped)
-
+    
     if not (QBCore.Functions.HasPermission(src, events['spectate'])) then return end
 
     CreateLog(4, src, player.id)

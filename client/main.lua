@@ -103,25 +103,29 @@ AddEventHandler('qb-admin:client:inventory', function(targetPed)
     TriggerServerEvent("inventory:server:OpenInventory", "otherplayer", targetPed)
 end)
 
-RegisterNetEvent('qb-admin:client:spectate', function(targetPed, coords)
-    local myPed = PlayerPedId()
-    local targetplayer = GetPlayerFromServerId(targetPed)
-    local target = GetPlayerPed(targetplayer)
-    if not isSpectating then
-        isSpectating = true
-        SetEntityVisible(myPed, false) -- Set invisible
-        SetEntityInvincible(myPed, true) -- set godmode
-        lastSpectateCoord = GetEntityCoords(myPed) -- save my last coords
-        SetEntityCoords(myPed, coords) -- Teleport To Player
-        NetworkSetInSpectatorMode(true, target) -- Enter Spectate Mode
-    else
-        isSpectating = false
-        NetworkSetInSpectatorMode(false, target) -- Remove From Spectate Mode
-        SetEntityCoords(myPed, lastSpectateCoord) -- Return Me To My Coords
-        SetEntityVisible(myPed, true) -- Remove invisible
-        SetEntityInvincible(myPed, false) -- Remove godmode
-        lastSpectateCoord = nil -- Reset Last Saved Coords
-    end
+RegisterNetEvent('qb-admin:client:spectate', function(playerServerId, tgtCoords)
+	local localPlayerPed = PlayerPedId()
+	if ((not tgtCoords) or (tgtCoords.z == 0.0)) then tgtCoords = GetEntityCoords(GetPlayerPed(GetPlayerFromServerId(playerServerId))) end
+	if playerServerId == GetPlayerServerId(PlayerId()) then 
+		-- spectatePlayer(GetPlayerPed(PlayerId()),GetPlayerFromServerId(PlayerId()),GetPlayerName(PlayerId()))
+		-- frozen = false
+		-- return
+	else
+		if not oldCoords then
+			oldCoords = GetEntityCoords(PlayerPedId())
+		end
+	end
+	SetEntityCoords(localPlayerPed, tgtCoords.x, tgtCoords.y, tgtCoords.z - 10.0, 0, 0, 0, false)
+	frozen = true
+	stopSpectateUpdate = true
+	local adminPed = localPlayerPed
+	local playerId = GetPlayerFromServerId(playerServerId)
+	repeat
+		Wait(200)
+		playerId = GetPlayerFromServerId(playerServerId)
+	until ((GetPlayerPed(playerId) > 0) and (playerId ~= -1))
+	spectatePlayer(GetPlayerPed(playerId),playerId,GetPlayerName(playerId))
+	stopSpectateUpdate = false
 end)
 
 RegisterNetEvent('qb-admin:client:SaveCar', function()
@@ -233,6 +237,73 @@ RegisterNetEvent('qb-admin:client:getsounds', function(sounds)
 
     exports['qb-menu']:openMenu(soundMenu)
 end)
+
+
+function spectatePlayer(targetPed,target,name)
+	local playerPed = PlayerPedId() -- yourself
+	enable = true
+	if (target == PlayerId() or target == -1) then 
+		enable = false
+	end
+	if enable then
+		SetEntityVisible(playerPed, false, 0)
+		SetEntityCollision(playerPed, false, false)
+		SetEntityInvincible(playerPed, true)
+		NetworkSetEntityInvisibleToNetwork(playerPed, true)
+		Citizen.Wait(200) -- to prevent target player seeing you
+		if targetPed == playerPed then
+			Wait(500)
+			targetPed = GetPlayerPed(target)
+		end
+		local targetx,targety,targetz = table.unpack(GetEntityCoords(targetPed, false))
+		RequestCollisionAtCoord(targetx,targety,targetz)
+		NetworkSetInSpectatorMode(true, targetPed)
+		
+		DrawPlayerInfo(target)
+	elseif not enable then
+		RequestCollisionAtCoord(oldCoords.x, oldCoords.y, oldCoords.z)
+		SetEntityVisible(playerPed, true, 0)
+		SetEntityCoords(playerPed, oldCoords.x, oldCoords.y, oldCoords.z+0.3, 0, 0, 0, false)
+		Wait(100)
+		oldCoords=nil
+		NetworkSetInSpectatorMode(false, targetPed)
+		StopDrawPlayerInfo()
+		frozen = false
+		Citizen.Wait(100) -- to prevent staying invisible
+		SetEntityVisible(playerPed, true, 0)
+		SetEntityCollision(playerPed, true, true)
+		SetEntityInvincible(playerPed, false)
+		NetworkSetEntityInvisibleToNetwork(playerPed, false)
+	end
+end
+
+Citizen.CreateThread( function()
+	while true do
+		Citizen.Wait(500)
+		if drawInfo and not stopSpectateUpdate then
+			local localPlayerPed = PlayerPedId()
+			local targetPed = GetPlayerPed(drawTarget)
+			local targetGod = GetPlayerInvincible(drawTarget)
+			
+			local tgtCoords = GetEntityCoords(targetPed)
+			if tgtCoords and tgtCoords.x ~= 0 then
+				SetEntityCoords(localPlayerPed, tgtCoords.x, tgtCoords.y, tgtCoords.z - 10.0, 0, 0, 0, false)
+			end
+		else
+			Citizen.Wait(1000)
+		end
+	end
+end)
+
+function DrawPlayerInfo(target)
+	drawTarget = target
+	drawInfo = true
+end
+
+function StopDrawPlayerInfo()
+	drawInfo = false
+	drawTarget = 0
+end
 
 AddEventHandler('QBCore:Client:OnPlayerLoaded', function()
     Admin = QBCore.Functions.GetPlayerData()
